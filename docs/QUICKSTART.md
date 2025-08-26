@@ -55,7 +55,7 @@ nano .env
 
 ```bash
 # Test semua komponen
-python TestBot.py
+python test.py
 
 # Jika semua PASS, bot siap digunakan!
 ```
@@ -98,7 +98,7 @@ pip install -r requirements.txt
 ### **Private Key Error**
 - Pastikan semua private keys sudah dikonfigurasi
 - Cek format private key (0x...)
-- Test koneksi dengan `TestBot.py`
+- Test koneksi dengan `python test.py`
 
 ### **Bot Tidak Merespon**
 - Cek log file
@@ -114,7 +114,7 @@ pip install -r requirements.txt
 
 - **Issues**: GitHub repository
 - **Documentation**: README.md
-- **Testing**: `python TestBot.py`
+- **Testing**: `python test.py`
 
 ---
 

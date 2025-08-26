@@ -5,8 +5,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from typing import Dict, List
 import json
 
-from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-from TradingBot import TradingBot
+from ..config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+from .TradingBot import TradingBot
 
 class TelegramTradingBot:
     def __init__(self):

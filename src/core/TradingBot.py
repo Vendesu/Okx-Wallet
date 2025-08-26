@@ -6,12 +6,12 @@ from typing import Dict, List, Optional
 import pandas as pd
 import numpy as np
 
-from config import *
-from TradingStrategy import TradingStrategy
-from OKXWalletClient import OKXWalletClient
-from HyperliquidClient import HyperliquidClient
-from MarketDataClient import MarketDataClient
-from MoneyManagement import MoneyManagement, MarketCondition, TradeRisk
+from ..config import *
+from ..strategies.TradingStrategy import TradingStrategy
+from ..clients.OKXWalletClient import OKXWalletClient
+from ..clients.HyperliquidClient import HyperliquidClient
+from ..clients.MarketDataClient import MarketDataClient
+from ..management.MoneyManagement import MoneyManagement, MarketCondition, TradeRisk
 
 class TradingBot:
     def __init__(self):

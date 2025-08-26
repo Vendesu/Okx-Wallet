@@ -12,11 +12,15 @@ from pathlib import Path
 # Add current directory to Python path
 sys.path.append(str(Path(__file__).parent))
 
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent / 'src'))
+
 from config import *
-from TradingStrategy import TradingStrategy
-from OKXWalletClient import OKXWalletClient
-from HyperliquidClient import HyperliquidClient
-from MarketDataClient import MarketDataClient
+from strategies.TradingStrategy import TradingStrategy
+from clients.OKXWalletClient import OKXWalletClient
+from clients.HyperliquidClient import HyperliquidClient
+from clients.MarketDataClient import MarketDataClient
 
 class BotTester:
     def __init__(self):
@@ -269,7 +273,7 @@ class BotTester:
         try:
             print("💰 Testing Money Management System...")
             
-            from MoneyManagement import MoneyManagement, MarketCondition, TradeRisk
+            from management.MoneyManagement import MoneyManagement, MarketCondition, TradeRisk
             
             mm = MoneyManagement()
             

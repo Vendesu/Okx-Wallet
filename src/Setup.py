@@ -128,13 +128,13 @@ def test_installation():
         print("   ✅ Config imported successfully")
         
         # Test strategy
-        from TradingStrategy import TradingStrategy
+        from strategies.TradingStrategy import TradingStrategy
         strategy = TradingStrategy()
         print("   ✅ Trading strategy imported successfully")
         
         # Test clients
-        from OKXWalletClient import OKXWalletClient
-        from HyperliquidClient import HyperliquidClient
+        from clients.OKXWalletClient import OKXWalletClient
+        from clients.HyperliquidClient import HyperliquidClient
         print("   ✅ Clients imported successfully")
         
         print("✅ Semua imports berhasil!")
@@ -158,10 +158,10 @@ def print_next_steps():
    - Isi Hyperliquid private key
 
 2. 🧪 **Test bot:**
-   python TestBot.py
+   python tests/TestBot.py
 
 3. 🚀 **Jalankan bot:**
-   python RunBot.py
+   python src/RunBot.py
 
 4. 📱 **Gunakan Telegram:**
    - Chat dengan bot Anda
