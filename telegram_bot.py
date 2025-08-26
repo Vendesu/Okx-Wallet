@@ -28,6 +28,7 @@ class TelegramTradingBot:
             self.application.add_handler(CommandHandler("positions", self._positions_command))
             self.application.add_handler(CommandHandler("trades", self._trades_command))
             self.application.add_handler(CommandHandler("help", self._help_command))
+            self.application.add_handler(CommandHandler("pairs_info", self._pairs_info_command))
             
             # Add callback query handler
             self.application.add_handler(CallbackQueryHandler(self._button_callback))
@@ -142,7 +143,9 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
 📊 **Status Bot Trading**
 
 🔄 **Status:** {'🟢 Berjalan' if status['is_running'] else '🔴 Berhenti'}
-📈 **Total Trades Hari Ini:** {status['daily_trades']}
+🎯 **Trading Mode:** {status['trading_mode'].upper()}
+📈 **Active Pairs:** {status['active_pairs_count']} pairs
+📊 **Total Trades Hari Ini:** {status['daily_trades']}
 💰 **Daily PnL:** ${status['daily_pnl']:.2f}
 📅 **Last Trade:** {status['last_trade_time'].strftime('%Y-%m-%d %H:%M:%S') if status['last_trade_time'] else 'Belum ada trade'}
 📊 **Total Trades:** {status['total_trades']}
@@ -156,12 +159,32 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
             else:
                 status_message += "Tidak ada posisi aktif\n"
                 
+            # Add trading pairs info
+            if status['active_pairs_count'] > 0:
+                status_message += f"\n**Trading Pairs Aktif:**\n"
+                if status['active_pairs_count'] <= 10:
+                    # Show all pairs if <= 10
+                    pairs_info = self.trading_bot.get_trading_pairs_info()
+                    for pair in list(pairs_info.keys())[:10]:
+                        current_price = pairs_info[pair].get('current_price', 0)
+                        if current_price:
+                            status_message += f"• {pair}: ${current_price:,.2f}\n"
+                        else:
+                            status_message += f"• {pair}\n"
+                else:
+                    # Show sample pairs
+                    pairs_info = self.trading_bot.get_trading_pairs_info()
+                    sample_pairs = list(pairs_info.keys())[:5]
+                    status_message += f"• Sample: {', '.join(sample_pairs)}\n"
+                    status_message += f"• ... dan {status['active_pairs_count'] - 5} pairs lainnya\n"
+                
             status_message += "\nGunakan /start_bot atau /stop_bot untuk kontrol bot."
             
             keyboard = [
                 [InlineKeyboardButton("🔄 Refresh", callback_data="status")],
                 [InlineKeyboardButton("💰 Balance", callback_data="balance")],
-                [InlineKeyboardButton("📈 Positions", callback_data="positions")]
+                [InlineKeyboardButton("📈 Positions", callback_data="positions")],
+                [InlineKeyboardButton("🎯 Pairs Info", callback_data="pairs_info")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
@@ -280,6 +303,75 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
         except Exception as e:
             await update.message.reply_text(f"❌ Error saat get trades: {e}")
             
+    async def _pairs_info_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /pairs_info command - Show detailed trading pairs info"""
+        try:
+            pairs_info = self.trading_bot.get_trading_pairs_info()
+            
+            if not pairs_info:
+                await update.message.reply_text("📊 **Trading Pairs Info**\n\nTidak ada pairs yang aktif.")
+                return
+                
+            # Create detailed message
+            message = "📊 **Trading Pairs Info**\n\n"
+            
+            # Group by status
+            active_pairs = []
+            inactive_pairs = []
+            
+            for pair, info in pairs_info.items():
+                if info.get('has_position', False):
+                    active_pairs.append((pair, info))
+                else:
+                    inactive_pairs.append((pair, info))
+                    
+            # Show active pairs first
+            if active_pairs:
+                message += "🟢 **Pairs dengan Posisi Aktif:**\n"
+                for pair, info in active_pairs[:10]:  # Limit to 10
+                    current_price = info.get('current_price', 0)
+                    position_size = info.get('position_size', 0)
+                    if current_price:
+                        message += f"• **{pair}**\n"
+                        message += f"  └ Price: ${current_price:,.2f}\n"
+                        message += f"  └ Position: {position_size:.4f}\n\n"
+                    else:
+                        message += f"• **{pair}** - Position: {position_size:.4f}\n\n"
+                        
+            # Show inactive pairs
+            if inactive_pairs:
+                message += "⚪ **Pairs Tanpa Posisi:**\n"
+                for pair, info in inactive_pairs[:15]:  # Limit to 15
+                    current_price = info.get('current_price', 0)
+                    if current_price:
+                        message += f"• {pair}: ${current_price:,.2f}\n"
+                    else:
+                        message += f"• {pair}\n"
+                        
+                if len(inactive_pairs) > 15:
+                    message += f"\n... dan {len(inactive_pairs) - 15} pairs lainnya"
+                    
+            # Add summary
+            total_pairs = len(pairs_info)
+            active_count = len(active_pairs)
+            message += f"\n\n📊 **Summary:** {active_count}/{total_pairs} pairs memiliki posisi aktif"
+            
+            keyboard = [
+                [InlineKeyboardButton("🔄 Refresh", callback_data="pairs_info")],
+                [InlineKeyboardButton("📊 Status", callback_data="status")],
+                [InlineKeyboardButton("💰 Balance", callback_data="balance")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                message,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error saat get pairs info: {e}")
+            
     async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
         help_message = """
@@ -293,7 +385,29 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
 • `/balance` - Lihat balance dan risk management
 • `/positions` - Lihat posisi yang sedang dibuka
 • `/trades` - Lihat history trading
+• `/pairs_info` - Lihat info detail trading pairs
 • `/help` - Tampilkan bantuan ini
+
+**Trading Modes:**
+🤖 **Auto Mode** (Default):
+- Auto-detect semua available symbols
+- Update symbols setiap jam
+- Support hingga 1000+ trading pairs
+
+📈 **Trending Mode**:
+- Fokus ke trending coins
+- Update berdasarkan market sentiment
+- Optimal untuk momentum trading
+
+💰 **High Volume Mode**:
+- Pilih pairs dengan volume tinggi
+- Filter berdasarkan minimum volume
+- Cocok untuk scalping
+
+📊 **Manual Mode**:
+- Set trading pairs manual
+- Full control atas selection
+- Custom trading strategy
 
 **Fitur Bot:**
 🤖 **Trading Otomatis:**
@@ -302,8 +416,8 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
 - Risk management otomatis dengan stop loss dan take profit
 
 📊 **Data Source:**
-- Market data dari OKX exchange
-- Trading execution di Hyperliquid
+- Market data dari CoinGecko (gratis)
+- Alternative: Binance API (lebih cepat)
 - Real-time price monitoring
 
 🛡️ **Risk Management:**
@@ -313,12 +427,41 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
 - Automatic stop loss dan take profit
 
 **Cara Penggunaan:**
-1. Pastikan semua API keys sudah dikonfigurasi
-2. Gunakan `/start_bot` untuk memulai trading
-3. Monitor progress dengan `/status`
-4. Gunakan `/stop_bot` untuk menghentikan
+1. Pastikan semua private keys sudah dikonfigurasi
+2. Pilih trading mode di file .env
+3. Gunakan `/start_bot` untuk memulai trading
+4. Monitor progress dengan `/status` dan `/pairs_info`
+5. Gunakan `/stop_bot` untuk menghentikan
 
-**Support:** Jika ada masalah, cek log file `trading_bot.log`
+**Konfigurasi Trading Mode:**
+```bash
+# Auto Mode (Default) - Support 1000+ pairs
+TRADING_MODE=auto
+AUTO_SYMBOL_LIMIT=50
+
+# Trending Mode - Fokus trending coins
+TRADING_MODE=trending
+TRENDING_SYMBOL_LIMIT=20
+
+# High Volume Mode - Volume-based selection
+TRADING_MODE=high_volume
+MIN_VOLUME_USD=1000000
+
+# Manual Mode - Custom selection
+TRADING_MODE=manual
+TRADING_PAIRS=BTC/USDT,ETH/USDT,SOL/USDT
+```
+
+⚠️ **PENTING:**
+- Jangan share file .env ke publik
+- Test di sandbox mode terlebih dahulu
+- Monitor bot secara berkala
+- Gunakan dengan modal yang siap hilang
+
+📚 **Dokumentasi lengkap ada di README.md**
+🤝 **Jika ada masalah, buat issue di GitHub**
+
+Happy Trading! 🚀📈
         """
         
         keyboard = [
@@ -350,6 +493,8 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
                 await self._positions_command(update, context)
             elif query.data == "trades":
                 await self._trades_command(update, context)
+            elif query.data == "pairs_info":
+                await self._pairs_info_command(update, context)
                 
         except Exception as e:
             await query.edit_message_text(f"❌ Error: {e}")

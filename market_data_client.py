@@ -18,6 +18,11 @@ class MarketDataClient:
         self.last_request_time = 0
         self.min_request_interval = 1.0  # 1 second between requests
         
+        # Cache untuk symbols
+        self.available_symbols_cache = {}
+        self.last_symbols_update = None
+        self.symbols_cache_duration = 3600  # 1 jam
+        
     def _rate_limit(self):
         """Rate limiting untuk API calls"""
         current_time = time.time()
@@ -29,6 +34,294 @@ class MarketDataClient:
             
         self.last_request_time = time.time()
         
+    def get_all_available_symbols(self, force_refresh: bool = False) -> List[str]:
+        """Get semua available symbols secara otomatis"""
+        try:
+            # Check cache
+            if (not force_refresh and 
+                self.available_symbols_cache and 
+                self.last_symbols_update and
+                (time.time() - self.last_symbols_update) < self.symbols_cache_duration):
+                
+                self.logger.info(f"✅ Menggunakan cached symbols: {len(self.available_symbols_cache)} symbols")
+                return list(self.available_symbols_cache.keys())
+                
+            # Fetch fresh symbols
+            if self.data_source == 'coingecko':
+                symbols = self._get_coingecko_all_symbols()
+            elif self.data_source == 'binance':
+                symbols = self._get_binance_all_symbols()
+            else:
+                symbols = self._get_coingecko_all_symbols()
+                
+            if symbols:
+                # Update cache
+                self.available_symbols_cache = {symbol: True for symbol in symbols}
+                self.last_symbols_update = time.time()
+                
+                self.logger.info(f"✅ Berhasil fetch {len(symbols)} symbols dari {self.data_source}")
+                return symbols
+            else:
+                self.logger.warning("⚠️ Tidak ada symbols yang ditemukan")
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error get all symbols: {e}")
+            return []
+            
+    def _get_coingecko_all_symbols(self) -> List[str]:
+        """Get semua symbols dari CoinGecko"""
+        try:
+            # Get top 1000 coins by market cap
+            url = "https://api.coingecko.com/api/v3/coins/markets"
+            params = {
+                'vs_currency': 'usd',
+                'order': 'market_cap_desc',
+                'per_page': 1000,
+                'page': 1,
+                'sparkline': False
+            }
+            
+            self._rate_limit()
+            response = self.session.get(url, params=params)
+            
+            if response.status_code == 200:
+                coins = response.json()
+                symbols = []
+                
+                for coin in coins:
+                    # Convert ke format trading pair
+                    symbol = f"{coin['symbol'].upper()}/USDT"
+                    symbols.append(symbol)
+                    
+                # Tambahkan beberapa stablecoins dan pairs populer
+                additional_pairs = [
+                    'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT',
+                    'SOL/USDT', 'DOT/USDT', 'LINK/USDT', 'UNI/USDT',
+                    'MATIC/USDT', 'AVAX/USDT', 'ATOM/USDT', 'LTC/USDT',
+                    'BCH/USDT', 'XRP/USDT', 'DOGE/USDT', 'SHIB/USDT'
+                ]
+                
+                # Gabungkan dan remove duplicates
+                all_symbols = list(set(symbols + additional_pairs))
+                all_symbols.sort()  # Sort alphabetically
+                
+                return all_symbols
+            else:
+                self.logger.error(f"CoinGecko API error: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"Error saat get CoinGecko symbols: {e}")
+            return []
+            
+    def _get_binance_all_symbols(self) -> List[str]:
+        """Get semua symbols dari Binance"""
+        try:
+            # Get exchange info
+            url = "https://api.binance.com/api/v3/exchangeInfo"
+            
+            self._rate_limit()
+            response = self.session.get(url)
+            
+            if response.status_code == 200:
+                data = response.json()
+                symbols = []
+                
+                for symbol_info in data.get('symbols', []):
+                    symbol = symbol_info['symbol']
+                    status = symbol_info['status']
+                    quote_asset = symbol_info['quoteAsset']
+                    
+                    # Hanya USDT pairs yang aktif
+                    if (status == 'TRADING' and 
+                        quote_asset == 'USDT' and 
+                        symbol.endswith('USDT')):
+                        
+                        # Convert ke format standard (BTC/USDT)
+                        base_asset = symbol.replace('USDT', '')
+                        trading_pair = f"{base_asset}/USDT"
+                        symbols.append(trading_pair)
+                        
+                # Sort alphabetically
+                symbols.sort()
+                return symbols
+            else:
+                self.logger.error(f"Binance API error: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"Error saat get Binance symbols: {e}")
+            return []
+            
+    def get_trending_symbols(self, limit: int = 20) -> List[str]:
+        """Get trending symbols berdasarkan volume dan price change"""
+        try:
+            if self.data_source == 'coingecko':
+                return self._get_coingecko_trending_symbols(limit)
+            elif self.data_source == 'binance':
+                return self._get_binance_trending_symbols(limit)
+            else:
+                return self._get_coingecko_trending_symbols(limit)
+                
+        except Exception as e:
+            self.logger.error(f"Error saat get trending symbols: {e}")
+            return []
+            
+    def _get_coingecko_trending_symbols(self, limit: int = 20) -> List[str]:
+        """Get trending symbols dari CoinGecko"""
+        try:
+            # Get trending coins
+            url = "https://api.coingecko.com/api/v3/search/trending"
+            
+            self._rate_limit()
+            response = self.session.get(url)
+            
+            if response.status_code == 200:
+                data = response.json()
+                trending_symbols = []
+                
+                for coin in data.get('coins', [])[:limit]:
+                    symbol = f"{coin['item']['symbol'].upper()}/USDT"
+                    trending_symbols.append(symbol)
+                    
+                return trending_symbols
+            else:
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"Error saat get CoinGecko trending: {e}")
+            return []
+            
+    def _get_binance_trending_symbols(self, limit: int = 20) -> List[str]:
+        """Get trending symbols dari Binance berdasarkan 24h volume"""
+        try:
+            # Get 24hr ticker untuk semua symbols
+            url = "https://api.binance.com/api/v3/ticker/24hr"
+            
+            self._rate_limit()
+            response = self.session.get(url)
+            
+            if response.status_code == 200:
+                tickers = response.json()
+                
+                # Filter USDT pairs dan sort berdasarkan volume
+                usdt_tickers = []
+                for ticker in tickers:
+                    if ticker['symbol'].endswith('USDT'):
+                        volume = float(ticker['volume'])
+                        price_change = float(ticker['priceChangePercent'])
+                        
+                        usdt_tickers.append({
+                            'symbol': ticker['symbol'].replace('USDT', '/USDT'),
+                            'volume': volume,
+                            'price_change': price_change
+                        })
+                        
+                # Sort berdasarkan volume (descending)
+                usdt_tickers.sort(key=lambda x: x['volume'], reverse=True)
+                
+                # Ambil top symbols
+                trending_symbols = [ticker['symbol'] for ticker in usdt_tickers[:limit]]
+                return trending_symbols
+            else:
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"Error saat get Binance trending: {e}")
+            return []
+            
+    def get_high_volume_symbols(self, min_volume_usd: float = 1000000, limit: int = 50) -> List[str]:
+        """Get symbols dengan volume tinggi"""
+        try:
+            if self.data_source == 'coingecko':
+                return self._get_coingecko_high_volume_symbols(min_volume_usd, limit)
+            elif self.data_source == 'binance':
+                return self._get_binance_high_volume_symbols(min_volume_usd, limit)
+            else:
+                return self._get_coingecko_high_volume_symbols(min_volume_usd, limit)
+                
+        except Exception as e:
+            self.logger.error(f"Error saat get high volume symbols: {e}")
+            return []
+            
+    def _get_coingecko_high_volume_symbols(self, min_volume_usd: float, limit: int) -> List[str]:
+        """Get high volume symbols dari CoinGecko"""
+        try:
+            # Get top coins by market cap
+            url = "https://api.coingecko.com/api/v3/coins/markets"
+            params = {
+                'vs_currency': 'usd',
+                'order': 'volume_desc',
+                'per_page': limit * 2,  # Get more to filter
+                'page': 1,
+                'sparkline': False
+            }
+            
+            self._rate_limit()
+            response = self.session.get(url, params=params)
+            
+            if response.status_code == 200:
+                coins = response.json()
+                high_volume_symbols = []
+                
+                for coin in coins:
+                    volume_24h = coin.get('total_volume', 0)
+                    if volume_24h >= min_volume_usd:
+                        symbol = f"{coin['symbol'].upper()}/USDT"
+                        high_volume_symbols.append(symbol)
+                        
+                        if len(high_volume_symbols) >= limit:
+                            break
+                            
+                return high_volume_symbols
+            else:
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"Error saat get CoinGecko high volume: {e}")
+            return []
+            
+    def _get_binance_high_volume_symbols(self, min_volume_usd: float, limit: int) -> List[str]:
+        """Get high volume symbols dari Binance"""
+        try:
+            # Get 24hr ticker
+            url = "https://api.binance.com/api/v3/ticker/24hr"
+            
+            self._rate_limit()
+            response = self.session.get(url)
+            
+            if response.status_code == 200:
+                tickers = response.json()
+                
+                # Filter USDT pairs dan sort berdasarkan volume
+                usdt_tickers = []
+                for ticker in tickers:
+                    if ticker['symbol'].endswith('USDT'):
+                        volume = float(ticker['volume'])
+                        price = float(ticker['lastPrice'])
+                        volume_usd = volume * price
+                        
+                        if volume_usd >= min_volume_usd:
+                            symbol = ticker['symbol'].replace('USDT', '/USDT')
+                            usdt_tickers.append({
+                                'symbol': symbol,
+                                'volume_usd': volume_usd
+                            })
+                            
+                # Sort berdasarkan volume USD (descending)
+                usdt_tickers.sort(key=lambda x: x['volume_usd'], reverse=True)
+                
+                # Ambil top symbols
+                high_volume_symbols = [ticker['symbol'] for ticker in usdt_tickers[:limit]]
+                return high_volume_symbols
+            else:
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"Error saat get Binance high volume: {e}")
+            return []
+            
     def get_market_data(self, symbol: str, timeframe: str = '1h', limit: int = 100) -> Optional[Dict]:
         """Mendapatkan market data berdasarkan data source"""
         try:

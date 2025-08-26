@@ -148,6 +148,30 @@ class BotTester:
             else:
                 print("  ⚠️ Market data kosong")
                 
+            # Test get all available symbols
+            all_symbols = self.market_data_client.get_all_available_symbols()
+            if all_symbols and len(all_symbols) > 0:
+                print(f"  ✅ All symbols berhasil: {len(all_symbols)} symbols")
+                print(f"    Sample: {', '.join(all_symbols[:5])}")
+            else:
+                print("  ⚠️ All symbols kosong")
+                
+            # Test get trending symbols
+            trending_symbols = self.market_data_client.get_trending_symbols(5)
+            if trending_symbols and len(trending_symbols) > 0:
+                print(f"  ✅ Trending symbols berhasil: {len(trending_symbols)} symbols")
+                print(f"    Trending: {', '.join(trending_symbols[:5])}")
+            else:
+                print("  ⚠️ Trending symbols kosong")
+                
+            # Test get high volume symbols
+            high_volume_symbols = self.market_data_client.get_high_volume_symbols(1000000, 5)
+            if high_volume_symbols and len(high_volume_symbols) > 0:
+                print(f"  ✅ High volume symbols berhasil: {len(high_volume_symbols)} symbols")
+                print(f"    High Volume: {', '.join(high_volume_symbols[:5])}")
+            else:
+                print("  ⚠️ High volume symbols kosong")
+                
             return True
             
         except Exception as e:

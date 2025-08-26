@@ -31,6 +31,11 @@ class TradingBot:
         self.market_data_cache = {}
         self.last_update_time = {}
         
+        # Dynamic symbols
+        self.active_trading_pairs = []
+        self.last_symbols_update = None
+        self.symbols_update_interval = 3600  # Update symbols setiap 1 jam
+        
     def _setup_logging(self) -> logging.Logger:
         """Setup logging untuk bot"""
         logging.basicConfig(
@@ -52,6 +57,9 @@ class TradingBot:
             self.logger.error("❌ Koneksi gagal, bot tidak bisa dimulai")
             return False
             
+        # Setup trading pairs
+        await self._setup_trading_pairs()
+        
         self.is_running = True
         self.logger.info("✅ Bot trading berhasil dimulai!")
         
@@ -99,6 +107,114 @@ class TradingBot:
             self.logger.error(f"❌ Error saat test koneksi: {e}")
             return False
             
+    async def _setup_trading_pairs(self):
+        """Setup trading pairs berdasarkan mode yang dipilih"""
+        try:
+            self.logger.info(f"🔧 Setting up trading pairs dengan mode: {TRADING_MODE}")
+            
+            if TRADING_MODE == 'manual':
+                # Gunakan pairs yang di-set manual
+                self.active_trading_pairs = TRADING_PAIRS if TRADING_PAIRS else ['BTC/USDT', 'ETH/USDT']
+                self.logger.info(f"📊 Manual mode: {len(self.active_trading_pairs)} pairs")
+                
+            elif TRADING_MODE == 'auto':
+                # Auto-detect semua available symbols
+                await self._update_trading_pairs()
+                
+            elif TRADING_MODE == 'trending':
+                # Gunakan trending symbols
+                trending_symbols = self.market_data_client.get_trending_symbols(TRENDING_SYMBOL_LIMIT)
+                self.active_trading_pairs = trending_symbols
+                self.logger.info(f"📈 Trending mode: {len(self.active_trading_pairs)} pairs")
+                
+            elif TRADING_MODE == 'high_volume':
+                # Gunakan high volume symbols
+                high_volume_symbols = self.market_data_client.get_high_volume_symbols(MIN_VOLUME_USD, AUTO_SYMBOL_LIMIT)
+                self.active_trading_pairs = high_volume_symbols
+                self.logger.info(f"💰 High volume mode: {len(self.active_trading_pairs)} pairs")
+                
+            else:
+                # Default ke auto mode
+                await self._update_trading_pairs()
+                
+            # Filter excluded symbols
+            self.active_trading_pairs = [pair for pair in self.active_trading_pairs if pair not in EXCLUDED_SYMBOLS]
+            
+            self.logger.info(f"🎯 Trading pairs aktif: {len(self.active_trading_pairs)} pairs")
+            if len(self.active_trading_pairs) <= 20:  # Show all if <= 20
+                for pair in self.active_trading_pairs:
+                    self.logger.info(f"  • {pair}")
+            else:
+                self.logger.info(f"  • Top 10: {', '.join(self.active_trading_pairs[:10])}")
+                self.logger.info(f"  • ... dan {len(self.active_trading_pairs) - 10} pairs lainnya")
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error setup trading pairs: {e}")
+            # Fallback ke default pairs
+            self.active_trading_pairs = ['BTC/USDT', 'ETH/USDT']
+            
+    async def _update_trading_pairs(self):
+        """Update trading pairs secara otomatis"""
+        try:
+            current_time = time.time()
+            
+            # Check if perlu update
+            if (self.last_symbols_update and 
+                (current_time - self.last_symbols_update) < self.symbols_update_interval):
+                return
+                
+            self.logger.info("🔄 Updating trading pairs...")
+            
+            # Get all available symbols
+            all_symbols = self.market_data_client.get_all_available_symbols(force_refresh=True)
+            
+            if all_symbols:
+                # Apply filters
+                filtered_symbols = self._filter_symbols(all_symbols)
+                
+                # Limit jumlah symbols
+                if len(filtered_symbols) > AUTO_SYMBOL_LIMIT:
+                    # Prioritaskan berdasarkan market cap atau volume
+                    filtered_symbols = filtered_symbols[:AUTO_SYMBOL_LIMIT]
+                    
+                self.active_trading_pairs = filtered_symbols
+                self.last_symbols_update = current_time
+                
+                self.logger.info(f"✅ Trading pairs updated: {len(self.active_trading_pairs)} pairs")
+            else:
+                self.logger.warning("⚠️ Tidak ada symbols yang ditemukan, gunakan default")
+                self.active_trading_pairs = ['BTC/USDT', 'ETH/USDT']
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error update trading pairs: {e}")
+            
+    def _filter_symbols(self, symbols: List[str]) -> List[str]:
+        """Filter symbols berdasarkan kriteria tertentu"""
+        try:
+            filtered = []
+            
+            for symbol in symbols:
+                # Skip excluded symbols
+                if symbol in EXCLUDED_SYMBOLS:
+                    continue
+                    
+                # Skip invalid symbols
+                if not symbol or '/' not in symbol:
+                    continue
+                    
+                # Skip stablecoin pairs (optional)
+                base_asset = symbol.split('/')[0]
+                if base_asset in ['USDT', 'USDC', 'BUSD', 'DAI']:
+                    continue
+                    
+                filtered.append(symbol)
+                
+            return filtered
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error filter symbols: {e}")
+            return symbols
+            
     def _reset_daily_counters(self):
         """Reset counter harian"""
         self.daily_trades = 0
@@ -115,6 +231,9 @@ class TradingBot:
                     await asyncio.sleep(3600)  # Sleep 1 jam
                     continue
                     
+                # Update trading pairs (periodic)
+                await self._update_trading_pairs()
+                
                 # Update market data
                 await self._update_market_data()
                 
@@ -157,7 +276,7 @@ class TradingBot:
         
     async def _update_market_data(self):
         """Update market data untuk semua trading pairs"""
-        for pair in TRADING_PAIRS:
+        for pair in self.active_trading_pairs:
             try:
                 # Get data dari market data client
                 market_data = self.market_data_client.get_market_data(pair, '1h', 100)
@@ -461,7 +580,10 @@ class TradingBot:
             'daily_pnl': self.daily_pnl,
             'active_positions': self.active_positions,
             'last_trade_time': self.last_trade_time,
-            'total_trades': len(self.trade_history)
+            'total_trades': len(self.trade_history),
+            'trading_mode': TRADING_MODE,
+            'active_pairs_count': len(self.active_trading_pairs),
+            'last_symbols_update': self.last_symbols_update
         }
         
     def get_wallet_balance(self) -> Optional[Dict]:
@@ -484,3 +606,28 @@ class TradingBot:
         except Exception as e:
             self.logger.error(f"❌ Error get wallet balance: {e}")
             return None
+            
+    def get_trading_pairs_info(self) -> Dict:
+        """Get informasi tentang trading pairs yang aktif"""
+        try:
+            pairs_info = {}
+            
+            for pair in self.active_trading_pairs:
+                # Get current price
+                current_price = self._get_current_price(pair)
+                
+                # Get market info
+                market_info = self.market_data_client.get_market_info(pair)
+                
+                pairs_info[pair] = {
+                    'current_price': current_price,
+                    'market_info': market_info,
+                    'has_position': pair in self.active_positions and self.active_positions[pair] > 0,
+                    'position_size': self.active_positions.get(pair, 0)
+                }
+                
+            return pairs_info
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error get trading pairs info: {e}")
+            return {}
