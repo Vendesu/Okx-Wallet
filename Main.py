@@ -9,8 +9,8 @@ import signal
 import sys
 from typing import Optional
 
-from telegram_bot import TelegramTradingBot
-from trading_bot import TradingBot
+from TelegramBot import TelegramTradingBot
+from TradingBot import TradingBot
 
 class TradingBotRunner:
     def __init__(self):

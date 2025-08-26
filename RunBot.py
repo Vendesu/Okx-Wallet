@@ -12,7 +12,7 @@ from pathlib import Path
 # Add current directory to Python path
 sys.path.append(str(Path(__file__).parent))
 
-from telegram_bot import TelegramTradingBot
+from TelegramBot import TelegramTradingBot
 
 async def main():
     """Main function untuk menjalankan bot"""

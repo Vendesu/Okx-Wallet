@@ -35,8 +35,8 @@ ENV/
 # Logs
 *.log
 logs/
-trading_bot.log
-trading_bot_system.log
+TradingBot.log
+TradingBot_system.log
 
 # IDE
 .vscode/

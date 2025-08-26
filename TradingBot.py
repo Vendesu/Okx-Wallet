@@ -7,11 +7,11 @@ import pandas as pd
 import numpy as np
 
 from config import *
-from trading_strategy import TradingStrategy
-from okx_client import OKXWalletClient
-from hyperliquid_client import HyperliquidClient
-from market_data_client import MarketDataClient
-from money_management import MoneyManagement, MarketCondition, TradeRisk
+from TradingStrategy import TradingStrategy
+from OKXWalletClient import OKXWalletClient
+from HyperliquidClient import HyperliquidClient
+from MarketDataClient import MarketDataClient
+from MoneyManagement import MoneyManagement, MarketCondition, TradeRisk
 
 class TradingBot:
     def __init__(self):
@@ -54,7 +54,7 @@ class TradingBot:
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler('trading_bot.log'),
+                logging.FileHandler('TradingBot.log'),
                 logging.StreamHandler()
             ]
         )

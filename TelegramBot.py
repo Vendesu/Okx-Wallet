@@ -6,7 +6,7 @@ from typing import Dict, List
 import json
 
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-from trading_bot import TradingBot
+from TradingBot import TradingBot
 
 class TelegramTradingBot:
     def __init__(self):

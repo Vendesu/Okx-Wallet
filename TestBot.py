@@ -13,10 +13,10 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent))
 
 from config import *
-from trading_strategy import TradingStrategy
-from okx_client import OKXWalletClient
-from hyperliquid_client import HyperliquidClient
-from market_data_client import MarketDataClient
+from TradingStrategy import TradingStrategy
+from OKXWalletClient import OKXWalletClient
+from HyperliquidClient import HyperliquidClient
+from MarketDataClient import MarketDataClient
 
 class BotTester:
     def __init__(self):
@@ -269,7 +269,7 @@ class BotTester:
         try:
             print("💰 Testing Money Management System...")
             
-            from money_management import MoneyManagement, MarketCondition, TradeRisk
+            from MoneyManagement import MoneyManagement, MarketCondition, TradeRisk
             
             mm = MoneyManagement()
             
