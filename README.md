@@ -1,6 +1,6 @@
 # 🤖 Trading Bot Otomatis dengan Telegram
 
-Bot trading cryptocurrency otomatis yang menggunakan strategi canggih dan dapat dikontrol melalui Telegram. Bot ini mengintegrasikan OKX untuk data market dan Hyperliquid untuk eksekusi trading.
+Bot trading cryptocurrency otomatis yang menggunakan strategi canggih dan dapat dikontrol melalui Telegram. Bot ini mengintegrasikan **OKX Wallet** untuk blockchain operations dan **Hyperliquid** untuk trading execution.
 
 ## 🚀 Fitur Utama
 
@@ -30,13 +30,18 @@ Bot trading cryptocurrency otomatis yang menggunakan strategi canggih dan dapat 
 - **Trade Notifications** - Notifikasi setiap trade yang dieksekusi
 - **Interactive Buttons** - Interface yang mudah digunakan
 
+### 🔗 **Blockchain Integration**
+- **OKX Wallet Support** - Multi-chain wallet (Ethereum, Polygon, BSC, Arbitrum)
+- **Market Data Sources** - CoinGecko & Binance API integration
+- **Secure Transactions** - Private key management dan transaction signing
+
 ## 🔄 Alur Trading Bot
 
 ### 1. **Data Collection & Analysis**
 ```
-OKX Exchange → Market Data (OHLCV) → Technical Indicators → Sentiment Score
+Market Data APIs → Technical Indicators → Sentiment Score
      ↓
-• Fetch 1-hour candlestick data
+• CoinGecko/Binance untuk market data
 • Calculate RSI, MACD, Bollinger Bands
 • Analyze volume patterns
 • Generate sentiment score (-1 to +1)
@@ -89,9 +94,9 @@ Active Positions → Price Monitoring → Stop Loss/Take Profit → Position Clo
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Telegram Bot  │    │  Trading Bot    │    │  Market Data    │
 │                 │    │                 │    │                 │
-│ • User Commands │◄──►│ • Strategy      │◄──►│ • OKX Exchange  │
-│ • Notifications │    │ • Risk Mgmt     │    │ • Real-time     │
-│ • Status Report │    │ • Order Exec    │    │ • Historical    │
+│ • User Commands │◄──►│ • Strategy      │◄──►│ • CoinGecko     │
+│ • Notifications │    │ • Risk Mgmt     │    │ • Binance API   │
+│ • Status Report │    │ • Order Exec    │    │ • Real-time     │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │
                                 ▼
@@ -102,6 +107,15 @@ Active Positions → Price Monitoring → Stop Loss/Take Profit → Position Clo
                        │ • Position Mgmt │
                        │ • Balance       │
                        └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │ OKX Wallet      │
+                       │                 │
+                       │ • Blockchain    │
+                       │ • Multi-chain   │
+                       │ • Transactions  │
+                       └─────────────────┘
 ```
 
 ## 📋 Requirements
@@ -109,15 +123,17 @@ Active Positions → Price Monitoring → Stop Loss/Take Profit → Position Clo
 ### **Dependencies**
 - Python 3.8+
 - python-telegram-bot
-- ccxt (OKX integration)
-- web3
+- web3 (blockchain integration)
+- requests, aiohttp
 - pandas, numpy
-- aiohttp, asyncio
 
-### **API Keys Required**
+### **API Keys & Configuration Required**
 - **Telegram Bot Token** - Dari @BotFather
-- **OKX API Keys** - API Key, Secret, Passphrase
-- **Hyperliquid Private Key** - Wallet private key
+- **OKX Wallet Private Key** - Wallet private key untuk blockchain
+- **OKX Wallet Address** - Wallet address untuk tracking
+- **OKX Network** - Blockchain network (ethereum, polygon, bsc, dll)
+- **Hyperliquid Private Key** - Wallet private key untuk trading
+- **Market Data Source** - CoinGecko atau Binance
 
 ## 🚀 Cara Instalasi
 
@@ -135,22 +151,25 @@ pip install -r requirements.txt
 ### 3. **Setup Environment Variables**
 ```bash
 cp .env.example .env
-# Edit .env dengan API keys yang sesuai
+# Edit .env dengan konfigurasi yang sesuai
 ```
 
-### 4. **Konfigurasi API Keys**
+### 4. **Konfigurasi**
 ```bash
 # Telegram Bot
 TELEGRAM_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
 
-# OKX Exchange
-OKX_API_KEY=your_api_key
-OKX_SECRET_KEY=your_secret_key
-OKX_PASSPHRASE=your_passphrase
+# OKX Wallet (Blockchain)
+OKX_WALLET_PRIVATE_KEY=your_wallet_private_key
+OKX_WALLET_ADDRESS=your_wallet_address
+OKX_NETWORK=ethereum  # atau polygon, bsc, arbitrum
 
 # Hyperliquid
-HYPERLIQUID_PRIVATE_KEY=your_private_key
+HYPERLIQUID_PRIVATE_KEY=your_hyperliquid_private_key
+
+# Market Data
+MARKET_DATA_SOURCE=coingecko  # atau binance
 ```
 
 ### 5. **Run Bot**
@@ -199,6 +218,12 @@ MACD_SLOW = 26                # MACD slow EMA
 MACD_SIGNAL = 9               # MACD signal line
 ```
 
+### **Blockchain Configuration**
+```python
+OKX_NETWORK = 'ethereum'      # ethereum, polygon, bsc, arbitrum
+MARKET_DATA_SOURCE = 'coingecko'  # coingecko, binance
+```
+
 ## 🔍 Monitoring & Logging
 
 ### **Log Files**
@@ -213,10 +238,10 @@ MACD_SIGNAL = 9               # MACD signal line
 
 ## 🛡️ Security Features
 
-### **API Key Protection**
+### **Private Key Protection**
 - Environment variables untuk sensitive data
 - No hardcoded credentials
-- Secure API communication
+- Secure blockchain transaction signing
 
 ### **Risk Controls**
 - Position size limits
@@ -247,6 +272,7 @@ MACD_SIGNAL = 9               # MACD signal line
 - Pastikan memahami risiko sebelum menggunakan
 - Gunakan dengan modal yang siap hilang
 - Monitor bot secara berkala
+- **Jangan share private keys ke siapapun**
 
 ## 🤝 Support & Contributing
 
@@ -270,13 +296,13 @@ MACD_SIGNAL = 9               # MACD signal line
 
 ### **Phase 1 (Current)**
 - ✅ Basic trading strategy
-- ✅ OKX + Hyperliquid integration
+- ✅ OKX Wallet + Hyperliquid integration
 - ✅ Telegram bot interface
 - ✅ Risk management
 
 ### **Phase 2 (Next)**
 - 🔄 Advanced strategies (ML-based)
-- 🔄 Multiple exchange support
+- 🔄 Multiple blockchain support
 - 🔄 Backtesting framework
 - 🔄 Performance analytics
 

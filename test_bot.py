@@ -14,15 +14,17 @@ sys.path.append(str(Path(__file__).parent))
 
 from config import *
 from trading_strategy import TradingStrategy
-from okx_client import OKXClient
+from okx_client import OKXWalletClient
 from hyperliquid_client import HyperliquidClient
+from market_data_client import MarketDataClient
 
 class BotTester:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.strategy = TradingStrategy()
-        self.okx_client = OKXClient()
+        self.okx_wallet = OKXWalletClient()
         self.hyperliquid_client = HyperliquidClient()
+        self.market_data_client = MarketDataClient()
         
     async def test_all_components(self):
         """Test semua komponen bot"""
@@ -36,13 +38,16 @@ class BotTester:
         # Test 2: Trading Strategy
         results.append(("Trading Strategy", self.test_trading_strategy()))
         
-        # Test 3: OKX Client
-        results.append(("OKX Client", await self.test_okx_client()))
+        # Test 3: Market Data Client
+        results.append(("Market Data Client", self.test_market_data_client()))
         
-        # Test 4: Hyperliquid Client
+        # Test 4: OKX Wallet Client
+        results.append(("OKX Wallet Client", await self.test_okx_wallet_client()))
+        
+        # Test 5: Hyperliquid Client
         results.append(("Hyperliquid Client", await self.test_hyperliquid_client()))
         
-        # Test 5: Integration Test
+        # Test 6: Integration Test
         results.append(("Integration", self.test_integration()))
         
         # Print results
@@ -73,8 +78,8 @@ class BotTester:
             # Check required configs
             required_configs = [
                 'TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID',
-                'OKX_API_KEY', 'OKX_SECRET_KEY', 'OKX_PASSPHRASE',
-                'HYPERLIQUID_PRIVATE_KEY'
+                'OKX_WALLET_PRIVATE_KEY', 'OKX_WALLET_ADDRESS', 'OKX_NETWORK',
+                'HYPERLIQUID_PRIVATE_KEY', 'MARKET_DATA_SOURCE'
             ]
             
             for config in required_configs:
@@ -117,35 +122,67 @@ class BotTester:
             print(f"  ❌ Error testing trading strategy: {e}")
             return False
             
-    async def test_okx_client(self):
-        """Test OKX client"""
+    def test_market_data_client(self):
+        """Test market data client"""
         try:
-            print("🏦 Testing OKX Client...")
+            print("📈 Testing Market Data Client...")
             
             # Test connection
-            if not self.okx_client.test_connection():
-                print("  ❌ Koneksi OKX gagal")
+            if not self.market_data_client.test_connection():
+                print("  ❌ Koneksi market data gagal")
                 return False
                 
-            print("  ✅ Koneksi OKX berhasil")
+            print("  ✅ Koneksi market data berhasil")
             
-            # Test market data (if API keys available)
-            if OKX_API_KEY and OKX_API_KEY != "your_okx_api_key_here":
-                try:
-                    market_data = self.okx_client.get_market_data("BTC/USDT", "1h", 10)
-                    if market_data:
-                        print(f"  ✅ Market data berhasil: {len(market_data['prices'])} data points")
-                    else:
-                        print("  ⚠️ Market data kosong (mungkin API key invalid)")
-                except Exception as e:
-                    print(f"  ⚠️ Market data error: {e}")
+            # Test get current price
+            btc_price = self.market_data_client.get_current_price("BTC/USDT")
+            if btc_price and btc_price > 0:
+                print(f"  ✅ Current price berhasil: BTC = ${btc_price:,.2f}")
             else:
-                print("  ⚠️ OKX API key tidak dikonfigurasi")
+                print("  ⚠️ Current price kosong atau error")
+                
+            # Test get market data
+            market_data = self.market_data_client.get_market_data("BTC/USDT", "1h", 10)
+            if market_data and len(market_data.get('prices', [])) > 0:
+                print(f"  ✅ Market data berhasil: {len(market_data['prices'])} data points")
+            else:
+                print("  ⚠️ Market data kosong")
                 
             return True
             
         except Exception as e:
-            print(f"  ❌ Error testing OKX client: {e}")
+            print(f"  ❌ Error testing market data client: {e}")
+            return False
+            
+    async def test_okx_wallet_client(self):
+        """Test OKX wallet client"""
+        try:
+            print("🏦 Testing OKX Wallet Client...")
+            
+            # Test connection
+            if not self.okx_wallet.test_connection():
+                print("  ❌ Koneksi OKX Wallet gagal")
+                return False
+                
+            print("  ✅ Koneksi OKX Wallet berhasil")
+            
+            # Test get balance (if private key available)
+            if OKX_WALLET_PRIVATE_KEY and OKX_WALLET_PRIVATE_KEY != "your_okx_wallet_private_key_here":
+                try:
+                    balance = self.okx_wallet.get_balance()
+                    if balance:
+                        print(f"  ✅ Balance berhasil: {balance['token']} = {balance['balance']:.6f}")
+                    else:
+                        print("  ⚠️ Balance kosong (mungkin private key invalid)")
+                except Exception as e:
+                    print(f"  ⚠️ Balance error: {e}")
+            else:
+                print("  ⚠️ OKX Wallet private key tidak dikonfigurasi")
+                
+            return True
+            
+        except Exception as e:
+            print(f"  ❌ Error testing OKX wallet client: {e}")
             return False
             
     async def test_hyperliquid_client(self):

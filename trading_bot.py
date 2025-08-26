@@ -7,15 +7,17 @@ import pandas as pd
 
 from config import *
 from trading_strategy import TradingStrategy
-from okx_client import OKXClient
+from okx_client import OKXWalletClient
 from hyperliquid_client import HyperliquidClient
+from market_data_client import MarketDataClient
 
 class TradingBot:
     def __init__(self):
         self.logger = self._setup_logging()
         self.strategy = TradingStrategy()
-        self.okx_client = OKXClient()
+        self.okx_wallet = OKXWalletClient()
         self.hyperliquid_client = HyperliquidClient()
+        self.market_data_client = MarketDataClient()
         
         # Trading state
         self.is_running = False
@@ -70,18 +72,24 @@ class TradingBot:
         self.logger.info("✅ Bot trading berhasil dihentikan")
         
     def _test_connections(self) -> bool:
-        """Test koneksi ke semua exchange"""
+        """Test koneksi ke semua service"""
         try:
-            # Test OKX
-            okx_ok = self.okx_client.test_connection()
+            # Test OKX Wallet
+            okx_ok = self.okx_wallet.test_connection()
             if not okx_ok:
-                self.logger.error("❌ Koneksi OKX gagal")
+                self.logger.error("❌ Koneksi OKX Wallet gagal")
                 return False
                 
             # Test Hyperliquid
             hyperliquid_ok = self.hyperliquid_client.test_connection()
             if not hyperliquid_ok:
                 self.logger.error("❌ Koneksi Hyperliquid gagal")
+                return False
+                
+            # Test Market Data
+            market_data_ok = self.market_data_client.test_connection()
+            if not market_data_ok:
+                self.logger.error("❌ Koneksi Market Data gagal")
                 return False
                 
             self.logger.info("✅ Semua koneksi berhasil")
@@ -151,11 +159,11 @@ class TradingBot:
         """Update market data untuk semua trading pairs"""
         for pair in TRADING_PAIRS:
             try:
-                # Get data from OKX
-                okx_data = self.okx_client.get_market_data(pair, '1h', 100)
+                # Get data dari market data client
+                market_data = self.market_data_client.get_market_data(pair, '1h', 100)
                 
-                if okx_data:
-                    self.market_data_cache[pair] = okx_data
+                if market_data:
+                    self.market_data_cache[pair] = market_data
                     self.last_update_time[pair] = datetime.now()
                     self.logger.debug(f"✅ Market data updated untuk {pair}")
                     
@@ -295,9 +303,8 @@ class TradingBot:
     def _get_current_price(self, pair: str) -> Optional[float]:
         """Get current price untuk pair tertentu"""
         try:
-            if pair in self.market_data_cache and self.market_data_cache[pair]['prices']:
-                return self.market_data_cache[pair]['prices'][-1]
-            return None
+            # Use market data client
+            return self.market_data_client.get_current_price(pair)
         except Exception as e:
             self.logger.error(f"❌ Error get current price untuk {pair}: {e}")
             return None
@@ -456,3 +463,24 @@ class TradingBot:
             'last_trade_time': self.last_trade_time,
             'total_trades': len(self.trade_history)
         }
+        
+    def get_wallet_balance(self) -> Optional[Dict]:
+        """Get balance dari OKX Wallet"""
+        try:
+            # Get native token balance
+            native_balance = self.okx_wallet.get_balance()
+            
+            # Get USDC balance if available
+            usdc_balance = None
+            # You can add USDC contract address here
+            # usdc_balance = self.okx_wallet.get_balance("0xA0b86a33E6441b8c4C8C1C1B8C4C8C1C1B8C4C8C")
+            
+            return {
+                'native': native_balance,
+                'usdc': usdc_balance,
+                'network': self.okx_wallet.network
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error get wallet balance: {e}")
+            return None

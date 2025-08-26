@@ -22,11 +22,11 @@ pip install -r requirements.txt
 # Copy environment file
 cp .env.example .env
 
-# Edit .env dengan API keys
+# Edit .env dengan konfigurasi yang sesuai
 nano .env
 ```
 
-## 🔑 Konfigurasi API Keys
+## 🔑 Konfigurasi
 
 ### **Telegram Bot**
 1. Chat dengan @BotFather di Telegram
@@ -35,16 +35,21 @@ nano .env
 4. Chat dengan bot dan gunakan `/start`
 5. Copy chat ID ke `TELEGRAM_CHAT_ID`
 
-### **OKX Exchange**
-1. Login ke [OKX](https://www.okx.com)
-2. Buka API Management
-3. Buat API key baru
-4. Copy ke `OKX_API_KEY`, `OKX_SECRET_KEY`, `OKX_PASSPHRASE`
+### **OKX Wallet (Blockchain)**
+1. Setup OKX Wallet di [OKX](https://www.okx.com)
+2. Export private key dari wallet
+3. Copy private key ke `OKX_WALLET_PRIVATE_KEY`
+4. Copy wallet address ke `OKX_WALLET_ADDRESS`
+5. Set `OKX_NETWORK` (ethereum, polygon, bsc, arbitrum)
 
 ### **Hyperliquid**
 1. Setup wallet di [Hyperliquid](https://hyperliquid.xyz)
 2. Export private key
 3. Copy ke `HYPERLIQUID_PRIVATE_KEY`
+
+### **Market Data Source**
+- **CoinGecko** (default): Gratis, rate limit
+- **Binance**: Lebih cepat, perlu API key
 
 ## 🧪 Test Bot
 
@@ -69,7 +74,7 @@ python main.py
 
 1. **Start Bot**: `/start`
 2. **Mulai Trading**: `/start_bot`
-3. **Monitor Status**: `/status`
+3. **Monitor Progress**: `/status`
 4. **Lihat Balance**: `/balance`
 5. **Lihat Posisi**: `/positions`
 6. **History Trading**: `/trades`
@@ -80,7 +85,8 @@ python main.py
 - **Test dulu** di sandbox mode
 - **Monitor bot** secara berkala
 - **Gunakan modal** yang siap hilang
-- **Jangan share** file .env
+- **Jangan share** private keys
+- **Backup wallet** secara berkala
 
 ## 🆘 Troubleshooting
 
@@ -89,15 +95,20 @@ python main.py
 pip install -r requirements.txt
 ```
 
-### **API Key Error**
-- Pastikan semua API keys sudah diisi
-- Cek permission API keys
+### **Private Key Error**
+- Pastikan semua private keys sudah dikonfigurasi
+- Cek format private key (0x...)
 - Test koneksi dengan `test_bot.py`
 
 ### **Bot Tidak Merespon**
 - Cek log file
 - Pastikan bot sudah start
 - Cek internet connection
+
+### **Blockchain Error**
+- Pastikan network yang dipilih benar
+- Cek private key format
+- Test dengan testnet dulu
 
 ## 📞 Support
 

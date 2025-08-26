@@ -1,5 +1,4 @@
 python-telegram-bot==20.7
-ccxt==4.1.77
 web3==6.11.3
 python-dotenv==1.0.0
 requests==2.31.0

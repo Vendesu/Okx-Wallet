@@ -7,11 +7,10 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-# Konfigurasi OKX
-OKX_API_KEY = os.getenv('OKX_API_KEY')
-OKX_SECRET_KEY = os.getenv('OKX_SECRET_KEY')
-OKX_PASSPHRASE = os.getenv('OKX_PASSPHRASE')
-OKX_SANDBOX = os.getenv('OKX_SANDBOX', 'false').lower() == 'true'
+# Konfigurasi OKX Wallet (Blockchain)
+OKX_WALLET_PRIVATE_KEY = os.getenv('OKX_WALLET_PRIVATE_KEY')
+OKX_WALLET_ADDRESS = os.getenv('OKX_WALLET_ADDRESS')
+OKX_NETWORK = os.getenv('OKX_NETWORK', 'ethereum')  # ethereum, polygon, bsc, dll
 
 # Konfigurasi Hyperliquid
 HYPERLIQUID_PRIVATE_KEY = os.getenv('HYPERLIQUID_PRIVATE_KEY')
@@ -35,4 +34,7 @@ MACD_SIGNAL = int(os.getenv('MACD_SIGNAL', '9'))
 # Konfigurasi Risk Management
 MAX_DAILY_TRADES = int(os.getenv('MAX_DAILY_TRADES', '10'))
 MAX_DAILY_LOSS = float(os.getenv('MAX_DAILY_LOSS', '50'))
-COOLDOWN_PERIOD = int(os.getenv('COOLDOWN_PERIOD', '300))  # 5 menit dalam detik
+COOLDOWN_PERIOD = int(os.getenv('COOLDOWN_PERIOD', '300'))  # 5 menit dalam detik
+
+# Konfigurasi Data Source (untuk market data)
+MARKET_DATA_SOURCE = os.getenv('MARKET_DATA_SOURCE', 'coingecko')  # coingecko, binance, dll
