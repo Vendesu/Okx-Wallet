@@ -29,6 +29,8 @@ class TelegramTradingBot:
             self.application.add_handler(CommandHandler("trades", self._trades_command))
             self.application.add_handler(CommandHandler("help", self._help_command))
             self.application.add_handler(CommandHandler("pairs_info", self._pairs_info_command))
+            self.application.add_handler(CommandHandler("risk_analysis", self._risk_analysis_command))
+            self.application.add_handler(CommandHandler("pnl_history", self._pnl_history_command))
             
             # Add callback query handler
             self.application.add_handler(CallbackQueryHandler(self._button_callback))
@@ -200,28 +202,79 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
     async def _balance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /balance command"""
         try:
-            # Get balance from Hyperliquid
-            balance = await self.trading_bot._get_available_balance()
+            # Get wallet balance
+            wallet_balance = self.trading_bot.get_wallet_balance()
+            
+            # Get money management info
+            mm_info = self.trading_bot.get_money_management_info()
             
             balance_message = f"""
-💰 **Balance Information**
+💰 **Balance & Risk Management**
 
-💵 **Available USDC:** ${balance:.2f}
-🏦 **Initial Balance:** ${INITIAL_BALANCE:.2f}
-📊 **Daily PnL:** ${self.trading_bot.daily_pnl:.2f}
+🏦 **Wallet Balance:**
+• Network: {wallet_balance.get('network', 'Unknown') if wallet_balance else 'Unknown'}
+• Native Token: {wallet_balance.get('native', 'Unknown') if wallet_balance else 'Unknown'}
+• USDC: {wallet_balance.get('usdc', 'Unknown') if wallet_balance else 'Unknown'}
 
-**Risk Management:**
-• Max Position Size: {MAX_POSITION_SIZE * 100}%
-• Stop Loss: {STOP_LOSS_PERCENTAGE}%
-• Take Profit: {TAKE_PROFIT_PERCENTAGE}%
-• Max Daily Trades: {MAX_DAILY_TRADES}
-• Max Daily Loss: ${MAX_DAILY_LOSS}
-            """
+📊 **Trading Balance:**
+• Initial Balance: ${self.trading_bot.initial_balance:,.2f}
+• Current Balance: ${self.trading_bot.current_balance:,.2f}
+• Total PnL: ${self.trading_bot.current_balance - self.trading_bot.initial_balance:,.2f}
+• PnL Percentage: {((self.trading_bot.current_balance - self.trading_bot.initial_balance) / self.trading_bot.initial_balance * 100):.2f}%
+
+🛡️ **Risk Management:**
+• Portfolio Risk Level: {mm_info.get('portfolio_risk', {}).get('risk_level', 'Unknown')}
+• Portfolio Risk: {mm_info.get('portfolio_risk', {}).get('risk_percentage', 0):.1f}%
+• Max Risk Allowed: {mm_info.get('portfolio_risk', {}).get('max_risk_allowed', 0):.1f}%
+
+📈 **Portfolio Metrics:**
+"""
             
+            portfolio_metrics = mm_info.get('portfolio_metrics')
+            if portfolio_metrics:
+                balance_message += f"""
+• Win Rate: {portfolio_metrics.win_rate:.1f}%
+• Profit Factor: {portfolio_metrics.profit_factor:.2f}
+• Sharpe Ratio: {portfolio_metrics.sharpe_ratio:.2f}
+• Max Drawdown: {portfolio_metrics.max_drawdown_percentage:.1f}%
+• Risk/Reward Ratio: {portfolio_metrics.risk_reward_ratio:.2f}
+"""
+            else:
+                balance_message += "• Belum ada data trading\n"
+                
+            # Add warnings if any
+            portfolio_risk = mm_info.get('portfolio_risk', {})
+            if portfolio_risk.get('warnings'):
+                balance_message += "\n🚨 **Warnings:**\n"
+                for warning in portfolio_risk['warnings']:
+                    balance_message += f"• {warning}\n"
+                    
+            if portfolio_risk.get('recommendations'):
+                balance_message += "\n💡 **Recommendations:**\n"
+                for rec in portfolio_risk['recommendations']:
+                    balance_message += f"• {rec}\n"
+                    
+            # Add money management summary
+            mm_summary = mm_info.get('money_management_summary', {})
+            if mm_summary:
+                balance_message += f"""
+
+⚙️ **Money Management Settings:**
+• Enabled: {'✅' if mm_summary.get('enabled') else '❌'}
+• Position Sizing: {mm_summary.get('position_sizing_method', 'Unknown')}
+• Risk Per Trade: {mm_summary.get('risk_per_trade_percentage', 0)}%
+• Max Portfolio Risk: {mm_summary.get('max_portfolio_risk', 0)}%
+• Max Drawdown: {mm_summary.get('max_drawdown', 0)}%
+• Trailing Stop: {'✅' if mm_summary.get('trailing_stop_enabled') else '❌'}
+• Profit Taking: {'✅' if mm_summary.get('profit_taking_enabled') else '❌'}
+• Volatility Adjustment: {'✅' if mm_summary.get('volatility_adjustment_enabled') else '❌'}
+"""
+                
             keyboard = [
                 [InlineKeyboardButton("🔄 Refresh", callback_data="balance")],
                 [InlineKeyboardButton("📊 Status", callback_data="status")],
-                [InlineKeyboardButton("📈 Positions", callback_data="positions")]
+                [InlineKeyboardButton("📈 Risk Analysis", callback_data="risk_analysis")],
+                [InlineKeyboardButton("💰 PnL History", callback_data="pnl_history")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
@@ -372,6 +425,175 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
         except Exception as e:
             await update.message.reply_text(f"❌ Error saat get pairs info: {e}")
             
+    async def _risk_analysis_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /risk_analysis command - Show detailed risk analysis"""
+        try:
+            mm_info = self.trading_bot.get_money_management_info()
+            
+            risk_message = "📊 **Risk Analysis Report**\n\n"
+            
+            # Portfolio Risk Analysis
+            portfolio_risk = mm_info.get('portfolio_risk', {})
+            if portfolio_risk:
+                risk_message += f"🛡️ **Portfolio Risk Analysis:**\n"
+                risk_message += f"• Risk Level: {portfolio_risk.get('risk_level', 'Unknown')}\n"
+                risk_message += f"• Total Risk: ${portfolio_risk.get('total_risk', 0):,.2f}\n"
+                risk_message += f"• Risk Percentage: {portfolio_risk.get('risk_percentage', 0):.1f}%\n"
+                risk_message += f"• Max Risk Allowed: ${portfolio_risk.get('max_risk_allowed', 0):,.2f}\n\n"
+                
+                if portfolio_risk.get('warnings'):
+                    risk_message += "🚨 **Risk Warnings:**\n"
+                    for warning in portfolio_risk['warnings']:
+                        risk_message += f"• {warning}\n"
+                    risk_message += "\n"
+                    
+                if portfolio_risk.get('recommendations'):
+                    risk_message += "💡 **Risk Recommendations:**\n"
+                    for rec in portfolio_risk['recommendations']:
+                        risk_message += f"• {rec}\n"
+                    risk_message += "\n"
+                    
+            # Correlation Risk Analysis
+            correlation_risk = mm_info.get('correlation_risk', {})
+            if correlation_risk:
+                risk_message += f"🔗 **Correlation Risk Analysis:**\n"
+                
+                sector_exposure = correlation_risk.get('sector_exposure', {})
+                if sector_exposure:
+                    risk_message += "• **Sector Exposure:**\n"
+                    for sector, count in sector_exposure.items():
+                        risk_message += f"  └ {sector.title()}: {count} positions\n"
+                    risk_message += "\n"
+                    
+                if correlation_risk.get('high_correlation_pairs'):
+                    risk_message += "⚠️ **High Correlation Warnings:**\n"
+                    for pair in correlation_risk['high_correlation_pairs']:
+                        risk_message += f"• {pair}\n"
+                    risk_message += "\n"
+                    
+                if correlation_risk.get('recommendations'):
+                    risk_message += "💡 **Diversification Recommendations:**\n"
+                    for rec in correlation_risk['recommendations']:
+                        risk_message += f"• {rec}\n"
+                    risk_message += "\n"
+                    
+            # Portfolio Metrics
+            portfolio_metrics = mm_info.get('portfolio_metrics')
+            if portfolio_metrics:
+                risk_message += f"📈 **Portfolio Performance Metrics:**\n"
+                risk_message += f"• Total PnL: ${portfolio_metrics.total_pnl:,.2f}\n"
+                risk_message += f"• PnL Percentage: {portfolio_metrics.total_pnl_percentage:.2f}%\n"
+                risk_message += f"• Daily PnL: ${portfolio_metrics.daily_pnl:,.2f}\n"
+                risk_message += f"• Weekly PnL: ${portfolio_metrics.weekly_pnl:,.2f}\n"
+                risk_message += f"• Monthly PnL: ${portfolio_metrics.monthly_pnl:,.2f}\n"
+                risk_message += f"• Max Drawdown: ${portfolio_metrics.max_drawdown:,.2f} ({portfolio_metrics.max_drawdown_percentage:.1f}%)\n"
+                risk_message += f"• Sharpe Ratio: {portfolio_metrics.sharpe_ratio:.2f}\n"
+                risk_message += f"• Win Rate: {portfolio_metrics.win_rate:.1f}%\n"
+                risk_message += f"• Profit Factor: {portfolio_metrics.profit_factor:.2f}\n"
+                risk_message += f"• Risk/Reward Ratio: {portfolio_metrics.risk_reward_ratio:.2f}\n\n"
+                
+            # Money Management Summary
+            mm_summary = mm_info.get('money_management_summary', {})
+            if mm_summary:
+                risk_message += f"⚙️ **Money Management Configuration:**\n"
+                risk_message += f"• Position Sizing Method: {mm_summary.get('position_sizing_method', 'Unknown')}\n"
+                risk_message += f"• Risk Per Trade: {mm_summary.get('risk_per_trade_percentage', 0)}%\n"
+                risk_message += f"• Max Portfolio Risk: {mm_summary.get('max_portfolio_risk', 0)}%\n"
+                risk_message += f"• Max Drawdown: {mm_summary.get('max_drawdown', 0)}%\n"
+                risk_message += f"• Trailing Stop: {'Enabled' if mm_summary.get('trailing_stop_enabled') else 'Disabled'}\n"
+                risk_message += f"• Profit Taking: {'Enabled' if mm_summary.get('profit_taking_enabled') else 'Disabled'}\n"
+                risk_message += f"• Volatility Adjustment: {'Enabled' if mm_summary.get('volatility_adjustment_enabled') else 'Disabled'}\n"
+                risk_message += f"• Market Condition Filters: {'Enabled' if mm_summary.get('market_condition_filters') else 'Disabled'}\n"
+                
+            keyboard = [
+                [InlineKeyboardButton("🔄 Refresh", callback_data="risk_analysis")],
+                [InlineKeyboardButton("💰 Balance", callback_data="balance")],
+                [InlineKeyboardButton("📊 Status", callback_data="status")],
+                [InlineKeyboardButton("📈 PnL History", callback_data="pnl_history")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                risk_message,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error saat get risk analysis: {e}")
+            
+    async def _pnl_history_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /pnl_history command - Show PnL history and analysis"""
+        try:
+            mm_info = self.trading_bot.get_money_management_info()
+            portfolio_metrics = mm_info.get('portfolio_metrics')
+            
+            if not portfolio_metrics:
+                await update.message.reply_text("📈 **PnL History**\n\nBelum ada data trading untuk analisis.")
+                return
+                
+            pnl_message = f"""
+📈 **PnL History & Analysis**
+
+💰 **Overall Performance:**
+• Initial Balance: ${self.trading_bot.initial_balance:,.2f}
+• Current Balance: ${self.trading_bot.current_balance:,.2f}
+• Total PnL: ${portfolio_metrics.total_pnl:,.2f}
+• PnL Percentage: {portfolio_metrics.total_pnl_percentage:.2f}%
+
+📊 **Time-based PnL:**
+• Daily PnL: ${portfolio_metrics.daily_pnl:,.2f}
+• Weekly PnL: ${portfolio_metrics.weekly_pnl:,.2f}
+• Monthly PnL: ${portfolio_metrics.monthly_pnl:,.2f}
+
+📈 **Performance Metrics:**
+• Win Rate: {portfolio_metrics.win_rate:.1f}%
+• Profit Factor: {portfolio_metrics.profit_factor:.2f}
+• Sharpe Ratio: {portfolio_metrics.sharpe_ratio:.2f}
+• Risk/Reward Ratio: {portfolio_metrics.risk_reward_ratio:.2f}
+
+📉 **Risk Metrics:**
+• Max Drawdown: ${portfolio_metrics.max_drawdown:,.2f} ({portfolio_metrics.max_drawdown_percentage:.1f}%)
+• Average Win: ${portfolio_metrics.average_win:,.2f}
+• Average Loss: ${portfolio_metrics.average_loss:,.2f}
+
+🎯 **Trading Statistics:**
+• Total Trades: {len(self.trading_bot.trade_history)}
+• Daily Trades: {self.trading_bot.daily_trades}
+• Portfolio Risk Level: {self.trading_bot.portfolio_risk_level}
+"""
+            
+            # Add recent trades if available
+            if self.trading_bot.trade_history:
+                recent_trades = self.trading_bot.trade_history[-5:]  # Last 5 trades
+                pnl_message += "\n📝 **Recent Trades:**\n"
+                
+                for trade in recent_trades:
+                    timestamp = trade['timestamp'].strftime('%m/%d %H:%M')
+                    side = trade['side']
+                    pair = trade['pair']
+                    pnl = trade.get('pnl', 0)
+                    pnl_icon = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
+                    
+                    pnl_message += f"• {timestamp} {side} {pair}: {pnl_icon} ${pnl:,.2f}\n"
+                    
+            keyboard = [
+                [InlineKeyboardButton("🔄 Refresh", callback_data="pnl_history")],
+                [InlineKeyboardButton("📊 Risk Analysis", callback_data="risk_analysis")],
+                [InlineKeyboardButton("💰 Balance", callback_data="balance")],
+                [InlineKeyboardButton("📈 Status", callback_data="status")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                pnl_message,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error saat get PnL history: {e}")
+            
     async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
         help_message = """
@@ -386,6 +608,8 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
 • `/positions` - Lihat posisi yang sedang dibuka
 • `/trades` - Lihat history trading
 • `/pairs_info` - Lihat info detail trading pairs
+• `/risk_analysis` - Analisis risiko portfolio lengkap
+• `/pnl_history` - History PnL dan performance metrics
 • `/help` - Tampilkan bantuan ini
 
 **Trading Modes:**
@@ -409,6 +633,28 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
 - Full control atas selection
 - Custom trading strategy
 
+**Money Management Features:**
+🛡️ **Risk Management:**
+- Position sizing dengan Kelly Criterion
+- Risk per trade: 2% (configurable)
+- Portfolio risk limit: 10% (configurable)
+- Max drawdown protection: 15% (configurable)
+- Daily/weekly/monthly loss limits
+
+📏 **Position Sizing Methods:**
+- **Kelly Criterion**: Optimal sizing berdasarkan win probability
+- **Fixed Amount**: Fixed dollar amount per trade
+- **Percentage**: Percentage of balance per trade
+- **Volatility Adjusted**: Adjust berdasarkan market volatility
+- **Market Condition**: Adjust berdasarkan bull/bear market
+
+📊 **Portfolio Management:**
+- Correlation risk monitoring
+- Sector exposure limits
+- Volatility adjustment
+- Market condition filters
+- Automatic stop loss & take profit
+
 **Fitur Bot:**
 🤖 **Trading Otomatis:**
 - Analisis market menggunakan RSI, MACD, dan Bollinger Bands
@@ -429,27 +675,32 @@ Saya adalah bot trading otomatis yang menggunakan strategi canggih untuk trading
 **Cara Penggunaan:**
 1. Pastikan semua private keys sudah dikonfigurasi
 2. Pilih trading mode di file .env
-3. Gunakan `/start_bot` untuk memulai trading
-4. Monitor progress dengan `/status` dan `/pairs_info`
-5. Gunakan `/stop_bot` untuk menghentikan
+3. Konfigurasi money management parameters
+4. Gunakan `/start_bot` untuk memulai trading
+5. Monitor progress dengan `/status`, `/balance`, `/risk_analysis`
+6. Gunakan `/stop_bot` untuk menghentikan
 
-**Konfigurasi Trading Mode:**
+**Konfigurasi Money Management:**
 ```bash
-# Auto Mode (Default) - Support 1000+ pairs
-TRADING_MODE=auto
-AUTO_SYMBOL_LIMIT=50
+# Risk Management
+RISK_PER_TRADE_PERCENTAGE=2.0
+MAX_PORTFOLIO_RISK_PERCENTAGE=10.0
+MAX_DRAWDOWN_PERCENTAGE=15.0
 
-# Trending Mode - Fokus trending coins
-TRADING_MODE=trending
-TRENDING_SYMBOL_LIMIT=20
+# Position Sizing
+POSITION_SIZING_METHOD=kelly
+KELLY_FRACTION=0.25
 
-# High Volume Mode - Volume-based selection
-TRADING_MODE=high_volume
-MIN_VOLUME_USD=1000000
+# Loss Limits
+MAX_DAILY_LOSS=50
+MAX_WEEKLY_LOSS=200
+MAX_MONTHLY_LOSS=500
 
-# Manual Mode - Custom selection
-TRADING_MODE=manual
-TRADING_PAIRS=BTC/USDT,ETH/USDT,SOL/USDT
+# Advanced Features
+TRAILING_STOP_ENABLED=true
+PROFIT_TAKING_ENABLED=true
+VOLATILITY_ADJUSTMENT_ENABLED=true
+MARKET_CONDITION_FILTERS=true
 ```
 
 ⚠️ **PENTING:**
@@ -457,6 +708,7 @@ TRADING_PAIRS=BTC/USDT,ETH/USDT,SOL/USDT
 - Test di sandbox mode terlebih dahulu
 - Monitor bot secara berkala
 - Gunakan dengan modal yang siap hilang
+- Money management tidak menjamin profit, hanya mengelola risiko
 
 📚 **Dokumentasi lengkap ada di README.md**
 🤝 **Jika ada masalah, buat issue di GitHub**
@@ -467,7 +719,8 @@ Happy Trading! 🚀📈
         keyboard = [
             [InlineKeyboardButton("🚀 Start Bot", callback_data="start_bot")],
             [InlineKeyboardButton("📊 Status", callback_data="status")],
-            [InlineKeyboardButton("💰 Balance", callback_data="balance")]
+            [InlineKeyboardButton("💰 Balance", callback_data="balance")],
+            [InlineKeyboardButton("📈 Risk Analysis", callback_data="risk_analysis")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -495,6 +748,10 @@ Happy Trading! 🚀📈
                 await self._trades_command(update, context)
             elif query.data == "pairs_info":
                 await self._pairs_info_command(update, context)
+            elif query.data == "risk_analysis":
+                await self._risk_analysis_command(update, context)
+            elif query.data == "pnl_history":
+                await self._pnl_history_command(update, context)
                 
         except Exception as e:
             await query.edit_message_text(f"❌ Error: {e}")

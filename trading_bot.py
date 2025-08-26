@@ -4,12 +4,14 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import pandas as pd
+import numpy as np
 
 from config import *
 from trading_strategy import TradingStrategy
 from okx_client import OKXWalletClient
 from hyperliquid_client import HyperliquidClient
 from market_data_client import MarketDataClient
+from money_management import MoneyManagement, MarketCondition, TradeRisk
 
 class TradingBot:
     def __init__(self):
@@ -18,14 +20,19 @@ class TradingBot:
         self.okx_wallet = OKXWalletClient()
         self.hyperliquid_client = HyperliquidClient()
         self.market_data_client = MarketDataClient()
+        self.money_management = MoneyManagement()
         
         # Trading state
         self.is_running = False
         self.daily_trades = 0
         self.daily_pnl = 0.0
+        self.weekly_pnl = 0.0
+        self.monthly_pnl = 0.0
         self.last_trade_time = None
         self.active_positions = {}
         self.trade_history = []
+        self.initial_balance = INITIAL_BALANCE
+        self.current_balance = INITIAL_BALANCE
         
         # Market data cache
         self.market_data_cache = {}
@@ -35,6 +42,11 @@ class TradingBot:
         self.active_trading_pairs = []
         self.last_symbols_update = None
         self.symbols_update_interval = 3600  # Update symbols setiap 1 jam
+        
+        # Risk management
+        self.portfolio_risk_level = 'LOW'
+        self.last_risk_check = None
+        self.risk_check_interval = 300  # Check risk setiap 5 menit
         
     def _setup_logging(self) -> logging.Logger:
         """Setup logging untuk bot"""
@@ -59,6 +71,9 @@ class TradingBot:
             
         # Setup trading pairs
         await self._setup_trading_pairs()
+        
+        # Initialize balance
+        await self._update_balance()
         
         self.is_running = True
         self.logger.info("✅ Bot trading berhasil dimulai!")
@@ -231,6 +246,12 @@ class TradingBot:
                     await asyncio.sleep(3600)  # Sleep 1 jam
                     continue
                     
+                # Check risk management
+                if await self._check_risk_management():
+                    self.logger.warning("⚠️ Risk management triggered, pausing trading...")
+                    await asyncio.sleep(300)  # Wait 5 menit
+                    continue
+                    
                 # Update trading pairs (periodic)
                 await self._update_trading_pairs()
                 
@@ -249,6 +270,9 @@ class TradingBot:
                 
                 # Risk management
                 await self._risk_management()
+                
+                # Update balance
+                await self._update_balance()
                 
                 # Wait before next iteration
                 await asyncio.sleep(COOLDOWN_PERIOD)
@@ -274,6 +298,55 @@ class TradingBot:
             
         return False
         
+    async def _check_risk_management(self) -> bool:
+        """Check risk management rules"""
+        try:
+            current_time = time.time()
+            
+            # Check if perlu check risk
+            if (self.last_risk_check and 
+                (current_time - self.last_risk_check) < self.risk_check_interval):
+                return False
+                
+            self.last_risk_check = current_time
+            
+            # Check portfolio risk
+            portfolio_risk = self.money_management.check_portfolio_risk(self.active_positions, self.current_balance)
+            
+            # Check correlation risk
+            correlation_risk = self.money_management.check_correlation_risk(self.active_positions)
+            
+            # Check if should stop trading
+            stop_trading = self.money_management.should_stop_trading(
+                self.current_balance, 
+                self.initial_balance, 
+                self.daily_pnl, 
+                self.weekly_pnl
+            )
+            
+            # Log risk status
+            if portfolio_risk.get('warnings'):
+                for warning in portfolio_risk['warnings']:
+                    self.logger.warning(f"🚨 {warning}")
+                    
+            if correlation_risk.get('warnings'):
+                for warning in correlation_risk['warnings']:
+                    self.logger.warning(f"⚠️ {warning}")
+                    
+            if stop_trading['should_stop']:
+                self.logger.error(f"🛑 {stop_trading['reason']}")
+                self.logger.info(f"💡 {stop_trading['recommendation']}")
+                return True
+                
+            # Update portfolio risk level
+            self.portfolio_risk_level = portfolio_risk.get('risk_level', 'LOW')
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error check risk management: {e}")
+            return False
+            
     async def _update_market_data(self):
         """Update market data untuk semua trading pairs"""
         for pair in self.active_trading_pairs:
@@ -317,7 +390,7 @@ class TradingBot:
             return {}
             
     async def _execute_trading_signals(self, signals: Dict):
-        """Execute trading signals"""
+        """Execute trading signals dengan money management"""
         for pair, signal_data in signals.items():
             try:
                 decision = signal_data['decision']
@@ -331,11 +404,11 @@ class TradingBot:
                     self.logger.info(f"⏰ Cooldown aktif, skip trading untuk {pair}")
                     continue
                     
-                # Execute trade
+                # Execute trade dengan money management
                 if decision in ["BUY", "STRONG_BUY"]:
-                    await self._execute_buy_order(pair, signal_data)
+                    await self._execute_buy_order_with_mm(pair, signal_data)
                 elif decision in ["SELL", "STRONG_SELL"]:
-                    await self._execute_sell_order(pair, signal_data)
+                    await self._execute_sell_order_with_mm(pair, signal_data)
                     
             except Exception as e:
                 self.logger.error(f"❌ Error execute signal untuk {pair}: {e}")
@@ -348,45 +421,77 @@ class TradingBot:
         time_diff = (datetime.now() - self.last_trade_time).total_seconds()
         return time_diff < COOLDOWN_PERIOD
         
-    async def _execute_buy_order(self, pair: str, signal_data: Dict):
-        """Execute buy order"""
+    async def _execute_buy_order_with_mm(self, pair: str, signal_data: Dict):
+        """Execute buy order dengan money management"""
         try:
             # Get current price
             current_price = self._get_current_price(pair)
             if not current_price:
                 return
                 
-            # Calculate position size
-            balance = await self._get_available_balance()
-            position_size = self.strategy.calculate_position_size(
-                balance, 2.0, STOP_LOSS_PERCENTAGE, signal_data['confidence']
+            # Calculate stop loss price
+            stop_loss_percentage = STOP_LOSS_PERCENTAGE
+            stop_loss_price = current_price * (1 - stop_loss_percentage / 100)
+            
+            # Calculate volatility
+            volatility = self._calculate_volatility(pair)
+            
+            # Determine market condition
+            market_condition = self._determine_market_condition(pair)
+            
+            # Calculate position size dengan money management
+            trade_risk = self.money_management.calculate_position_size(
+                balance=self.current_balance,
+                entry_price=current_price,
+                stop_loss_price=stop_loss_price,
+                confidence=signal_data['confidence'],
+                volatility=volatility,
+                market_condition=market_condition
             )
             
-            if position_size <= 0:
+            if not trade_risk or trade_risk.position_size <= 0:
                 self.logger.warning(f"⚠️ Position size terlalu kecil untuk {pair}")
                 return
+                
+            # Check if position size exceeds limits
+            if trade_risk.position_size > MAX_POSITION_SIZE:
+                trade_risk.position_size = MAX_POSITION_SIZE
+                self.logger.info(f"📏 Position size dibatasi ke {MAX_POSITION_SIZE} untuk {pair}")
                 
             # Place order di Hyperliquid
             coin = pair.split('/')[0]  # Extract coin name
             order_result = self.hyperliquid_client.place_order(
                 coin=coin,
                 side="BUY",
-                size=position_size,
+                size=trade_risk.position_size,
                 price=current_price,
                 order_type="LIMIT"
             )
             
             if order_result:
-                self._record_trade(pair, "BUY", position_size, current_price, signal_data)
-                self.logger.info(f"✅ Buy order berhasil untuk {pair}: {position_size} @ {current_price}")
+                # Record trade dengan money management data
+                self._record_trade_with_mm(pair, "BUY", trade_risk, signal_data)
+                
+                # Update money management
+                self.money_management.update_trade_history({
+                    'pair': pair,
+                    'side': 'BUY',
+                    'entry_price': current_price,
+                    'position_size': trade_risk.position_size,
+                    'confidence': signal_data['confidence'],
+                    'risk_amount': trade_risk.risk_amount
+                })
+                
+                self.logger.info(f"✅ Buy order berhasil untuk {pair}: {trade_risk.position_size:.4f} @ ${current_price:.2f}")
+                self.logger.info(f"💰 Risk: ${trade_risk.risk_amount:.2f} ({trade_risk.risk_percentage:.1f}%)")
             else:
                 self.logger.error(f"❌ Buy order gagal untuk {pair}")
                 
         except Exception as e:
             self.logger.error(f"❌ Error execute buy order untuk {pair}: {e}")
             
-    async def _execute_sell_order(self, pair: str, signal_data: Dict):
-        """Execute sell order"""
+    async def _execute_sell_order_with_mm(self, pair: str, signal_data: Dict):
+        """Execute sell order dengan money management"""
         try:
             # Check if we have position to sell
             if pair not in self.active_positions or self.active_positions[pair] <= 0:
@@ -411,13 +516,74 @@ class TradingBot:
             )
             
             if order_result:
-                self._record_trade(pair, "SELL", position_size, current_price, signal_data)
-                self.logger.info(f"✅ Sell order berhasil untuk {pair}: {position_size} @ {current_price}")
+                # Calculate PnL
+                entry_price = self._get_entry_price(pair)
+                pnl = (current_price - entry_price) * position_size
+                pnl_percentage = ((current_price - entry_price) / entry_price) * 100
+                
+                # Record trade dengan PnL
+                self._record_trade_with_mm(pair, "SELL", None, signal_data, pnl, pnl_percentage, entry_price)
+                
+                # Update money management
+                self.money_management.update_trade_history({
+                    'pair': pair,
+                    'side': 'SELL',
+                    'entry_price': entry_price,
+                    'exit_price': current_price,
+                    'position_size': position_size,
+                    'pnl': pnl,
+                    'pnl_percentage': pnl_percentage,
+                    'confidence': signal_data['confidence']
+                })
+                
+                self.logger.info(f"✅ Sell order berhasil untuk {pair}: {position_size:.4f} @ ${current_price:.2f}")
+                self.logger.info(f"💰 PnL: ${pnl:.2f} ({pnl_percentage:.1f}%)")
             else:
                 self.logger.error(f"❌ Sell order gagal untuk {pair}")
                 
         except Exception as e:
             self.logger.error(f"❌ Error execute sell order untuk {pair}: {e}")
+            
+    def _calculate_volatility(self, pair: str) -> float:
+        """Calculate volatility untuk pair"""
+        try:
+            if pair in self.market_data_cache:
+                prices = self.market_data_cache[pair].get('prices', [])
+                if len(prices) > 1:
+                    returns = [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, len(prices))]
+                    volatility = np.std(returns) * 100  # Convert to percentage
+                    return volatility
+            return 0
+        except Exception as e:
+            self.logger.error(f"❌ Error calculate volatility untuk {pair}: {e}")
+            return 0
+            
+    def _determine_market_condition(self, pair: str) -> MarketCondition:
+        """Determine market condition untuk pair"""
+        try:
+            if pair in self.market_data_cache:
+                prices = self.market_data_cache[pair].get('prices', [])
+                if len(prices) >= 20:
+                    # Simple trend analysis
+                    recent_prices = prices[-20:]
+                    first_price = recent_prices[0]
+                    last_price = recent_prices[-1]
+                    
+                    # Calculate trend
+                    trend_percentage = ((last_price - first_price) / first_price) * 100
+                    
+                    if trend_percentage > 10:
+                        return MarketCondition.BULL
+                    elif trend_percentage < -10:
+                        return MarketCondition.BEAR
+                    else:
+                        return MarketCondition.SIDEWAYS
+                        
+            return MarketCondition.SIDEWAYS
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error determine market condition untuk {pair}: {e}")
+            return MarketCondition.SIDEWAYS
             
     def _get_current_price(self, pair: str) -> Optional[float]:
         """Get current price untuk pair tertentu"""
@@ -428,6 +594,12 @@ class TradingBot:
             self.logger.error(f"❌ Error get current price untuk {pair}: {e}")
             return None
             
+    def _get_entry_price(self, pair: str) -> float:
+        """Get entry price untuk pair (simplified)"""
+        # In real implementation, this should track actual entry prices
+        # For now, use current price as approximation
+        return self._get_current_price(pair) or 0
+        
     async def _get_available_balance(self) -> float:
         """Get available balance dari Hyperliquid"""
         try:
@@ -437,32 +609,42 @@ class TradingBot:
                 for asset in user_state['data'].get('assetPositions', []):
                     if asset.get('coin') == 'USDC':
                         return float(asset.get('free', 0))
-            return INITIAL_BALANCE
+            return self.current_balance
         except Exception as e:
             self.logger.error(f"❌ Error get balance: {e}")
-            return INITIAL_BALANCE
+            return self.current_balance
             
-    def _record_trade(self, pair: str, side: str, size: float, price: float, signal_data: Dict):
-        """Record trade untuk tracking"""
+    def _record_trade_with_mm(self, pair: str, side: str, trade_risk: TradeRisk, signal_data: Dict, pnl: float = 0, pnl_percentage: float = 0, entry_price: float = 0):
+        """Record trade dengan money management data"""
         trade = {
             'timestamp': datetime.now(),
             'pair': pair,
             'side': side,
-            'size': size,
-            'price': price,
+            'size': trade_risk.position_size if trade_risk else 0,
+            'price': trade_risk.entry_price if trade_risk else entry_price,
             'confidence': signal_data['confidence'],
-            'sentiment': signal_data['sentiment']
+            'sentiment': signal_data['sentiment'],
+            'pnl': pnl,
+            'pnl_percentage': pnl_percentage,
+            'risk_amount': trade_risk.risk_amount if trade_risk else 0,
+            'risk_percentage': trade_risk.risk_percentage if trade_risk else 0
         }
         
         self.trade_history.append(trade)
         self.daily_trades += 1
         self.last_trade_time = datetime.now()
         
+        # Update PnL
+        if side == "SELL":
+            self.daily_pnl += pnl
+            self.weekly_pnl += pnl
+            self.monthly_pnl += pnl
+            
         # Update active positions
-        if side == "BUY":
-            self.active_positions[pair] = self.active_positions.get(pair, 0) + size
+        if side == "BUY" and trade_risk:
+            self.active_positions[pair] = self.active_positions.get(pair, 0) + trade_risk.position_size
         elif side == "SELL":
-            self.active_positions[pair] = max(0, self.active_positions.get(pair, 0) - size)
+            self.active_positions[pair] = max(0, self.active_positions.get(pair, 0) - trade['size'])
             
     async def _update_positions(self):
         """Update status posisi yang sedang dibuka"""
@@ -564,7 +746,7 @@ class TradingBot:
                 try:
                     current_price = self._get_current_price(pair)
                     if current_price:
-                        await self._execute_sell_order(pair, {
+                        await self._execute_sell_order_with_mm(pair, {
                             'decision': 'STRONG_SELL',
                             'confidence': 1.0,
                             'sentiment': {'sentiment': -1.0}
@@ -572,18 +754,33 @@ class TradingBot:
                 except Exception as e:
                     self.logger.error(f"❌ Error close position untuk {pair}: {e}")
                     
+    async def _update_balance(self):
+        """Update current balance"""
+        try:
+            balance = await self._get_available_balance()
+            if balance > 0:
+                self.current_balance = balance
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error update balance: {e}")
+            
     def get_status(self) -> Dict:
         """Get status bot trading"""
         return {
             'is_running': self.is_running,
             'daily_trades': self.daily_trades,
             'daily_pnl': self.daily_pnl,
+            'weekly_pnl': self.weekly_pnl,
+            'monthly_pnl': self.monthly_pnl,
             'active_positions': self.active_positions,
             'last_trade_time': self.last_trade_time,
             'total_trades': len(self.trade_history),
             'trading_mode': TRADING_MODE,
             'active_pairs_count': len(self.active_trading_pairs),
-            'last_symbols_update': self.last_symbols_update
+            'last_symbols_update': self.last_symbols_update,
+            'portfolio_risk_level': self.portfolio_risk_level,
+            'current_balance': self.current_balance,
+            'initial_balance': self.initial_balance
         }
         
     def get_wallet_balance(self) -> Optional[Dict]:
@@ -630,4 +827,38 @@ class TradingBot:
             
         except Exception as e:
             self.logger.error(f"❌ Error get trading pairs info: {e}")
+            return {}
+            
+    def get_money_management_info(self) -> Dict:
+        """Get money management information"""
+        try:
+            # Get portfolio metrics
+            portfolio_metrics = self.money_management.get_portfolio_metrics(
+                self.current_balance, 
+                self.initial_balance
+            )
+            
+            # Get money management summary
+            mm_summary = self.money_management.get_money_management_summary()
+            
+            # Get portfolio risk
+            portfolio_risk = self.money_management.check_portfolio_risk(
+                self.active_positions, 
+                self.current_balance
+            )
+            
+            # Get correlation risk
+            correlation_risk = self.money_management.check_correlation_risk(self.active_positions)
+            
+            return {
+                'portfolio_metrics': portfolio_metrics,
+                'money_management_summary': mm_summary,
+                'portfolio_risk': portfolio_risk,
+                'correlation_risk': correlation_risk,
+                'current_balance': self.current_balance,
+                'initial_balance': self.initial_balance
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error get money management info: {e}")
             return {}

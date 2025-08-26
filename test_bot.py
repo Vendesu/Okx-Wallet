@@ -50,6 +50,9 @@ class BotTester:
         # Test 6: Integration Test
         results.append(("Integration", self.test_integration()))
         
+        # Test 7: Money Management
+        results.append(("Money Management", self.test_money_management()))
+        
         # Print results
         print("\n📊 **Hasil Testing:**\n")
         for component, success in results:
@@ -259,6 +262,108 @@ class BotTester:
             
         except Exception as e:
             print(f"  ❌ Error testing integration: {e}")
+            return False
+
+    def test_money_management(self):
+        """Test money management system"""
+        try:
+            print("💰 Testing Money Management System...")
+            
+            from money_management import MoneyManagement, MarketCondition, TradeRisk
+            
+            mm = MoneyManagement()
+            
+            # Test position sizing
+            balance = 1000
+            entry_price = 100
+            stop_loss_price = 98
+            confidence = 0.8
+            
+            trade_risk = mm.calculate_position_size(
+                balance=balance,
+                entry_price=entry_price,
+                stop_loss_price=stop_loss_price,
+                confidence=confidence,
+                volatility=20.0,
+                market_condition=MarketCondition.BULL
+            )
+            
+            if trade_risk:
+                print(f"  ✅ Position sizing berhasil:")
+                print(f"    └ Position Size: {trade_risk.position_size:.4f}")
+                print(f"    └ Risk Amount: ${trade_risk.risk_amount:.2f}")
+                print(f"    └ Risk Percentage: {trade_risk.risk_percentage:.1f}%")
+                print(f"    └ Take Profit: ${trade_risk.take_profit_price:.2f}")
+            else:
+                print("  ❌ Position sizing gagal")
+                return False
+                
+            # Test portfolio risk check
+            active_positions = {
+                'BTC/USDT': {'risk_amount': 20},
+                'ETH/USDT': {'risk_amount': 15}
+            }
+            
+            portfolio_risk = mm.check_portfolio_risk(active_positions, balance)
+            if portfolio_risk:
+                print(f"  ✅ Portfolio risk check berhasil:")
+                print(f"    └ Risk Level: {portfolio_risk.get('risk_level', 'Unknown')}")
+                print(f"    └ Risk Percentage: {portfolio_risk.get('risk_percentage', 0):.1f}%")
+            else:
+                print("  ❌ Portfolio risk check gagal")
+                
+            # Test correlation risk check
+            correlation_risk = mm.check_correlation_risk(active_positions)
+            if correlation_risk:
+                print(f"  ✅ Correlation risk check berhasil:")
+                sector_exposure = correlation_risk.get('sector_exposure', {})
+                for sector, count in sector_exposure.items():
+                    print(f"    └ {sector}: {count} positions")
+            else:
+                print("  ❌ Correlation risk check gagal")
+                
+            # Test drawdown calculation
+            balance_history = [1000, 1050, 1020, 1100, 1080]
+            drawdown_info = mm.calculate_drawdown(balance_history)
+            if drawdown_info:
+                print(f"  ✅ Drawdown calculation berhasil:")
+                print(f"    └ Max Drawdown: ${drawdown_info.get('max_drawdown', 0):.2f}")
+                print(f"    └ Max Drawdown %: {drawdown_info.get('max_drawdown_percentage', 0):.1f}%")
+            else:
+                print("  ❌ Drawdown calculation gagal")
+                
+            # Test stop trading check
+            stop_trading = mm.should_stop_trading(balance, 1000, -60, -150)
+            if stop_trading:
+                print(f"  ✅ Stop trading check berhasil:")
+                print(f"    └ Should Stop: {stop_trading.get('should_stop', False)}")
+                if stop_trading.get('should_stop'):
+                    print(f"    └ Reason: {stop_trading.get('reason', 'Unknown')}")
+            else:
+                print("  ❌ Stop trading check gagal")
+                
+            # Test portfolio metrics
+            portfolio_metrics = mm.get_portfolio_metrics(balance, 1000)
+            if portfolio_metrics:
+                print(f"  ✅ Portfolio metrics berhasil:")
+                print(f"    └ Total PnL: ${portfolio_metrics.total_pnl:.2f}")
+                print(f"    └ Win Rate: {portfolio_metrics.win_rate:.1f}%")
+            else:
+                print("  ❌ Portfolio metrics gagal")
+                
+            # Test money management summary
+            mm_summary = mm.get_money_management_summary()
+            if mm_summary:
+                print(f"  ✅ Money management summary berhasil:")
+                print(f"    └ Enabled: {mm_summary.get('enabled', False)}")
+                print(f"    └ Position Sizing: {mm_summary.get('position_sizing_method', 'Unknown')}")
+            else:
+                print("  ❌ Money management summary gagal")
+                
+            return True
+            
+        except Exception as e:
+            print(f"  ❌ Error testing money management: {e}")
             return False
 
 async def main():
